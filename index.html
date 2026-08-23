@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ltp's Minesweeper</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { background-color: #0a0000; color: #fff; font-family: 'Courier New', Courier, monospace; overflow: hidden; touch-action: none; }
+        
+        .bg-dark { background-color: #111; }
+        .bg-red-dark { background-color: #400; }
+        .text-red { color: #ff3333; }
+        .text-white { color: #fff; }
+        .border-red { border: 2px solid #a00; }
+        
+        .btn { 
+            background: #000; color: #fff; border: 1px solid #fff; 
+            padding: 10px 20px; cursor: pointer; text-transform: uppercase;
+            font-weight: bold; transition: all 0.2s;
+        }
+        .btn:hover { background: #fff; color: #000; }
+        .btn.active { background: #f00; border-color: #f00; color: #fff; }
+        .btn.disabled { opacity: 0.5; pointer-events: none; }
+
+        #menu {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: radial-gradient(circle, #200 0%, #000 100%); z-index: 10;
+        }
+        
+        h1 { font-size: 3rem; margin-bottom: 2rem; color: #f00; text-shadow: 2px 2px 0 #000, -1px -1px 0 #fff; text-align: center; }
+
+        .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        
+        .settings-panel {
+            background: #000; border: 1px solid #f00; padding: 15px; margin-top: 15px;
+            display: none; flex-direction: column; gap: 10px; max-width: 400px;
+            max-height: 40vh; overflow-y: auto;
+        }
+
+        .custom-inputs, .sub-setting { display: flex; gap: 10px; align-items: center; }
+        .custom-inputs input, .sub-setting input { background: #000; color: #fff; border: 1px solid #f00; padding: 5px; }
+        .custom-inputs input { width: 70px; }
+        .sub-setting input { width: 60px; }
+        .sub-setting { margin-left: 20px; font-size: 0.9em; }
+
+        #game-ui {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            display: none; flex-direction: column;
+        }
+
+        #header {
+            background: #111; border-bottom: 2px solid #a00; padding: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 10px; z-index: 5;
+        }
+
+        .tools { display: flex; gap: 5px; }
+        
+        #health-container {
+            display: flex; gap: 5px; align-items: center;
+        }
+        .heart { width: 20px; height: 20px; fill: #f00; }
+        .heart-empty { fill: #333; }
+        
+        #canvas-container { flex-grow: 1; position: relative; overflow: hidden; background: #050000; }
+        canvas { display: block; }
+        
+        #game-over {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9); border: 2px solid #f00; padding: 30px;
+            text-align: center; display: none; z-index: 20;
+        }
+
+        input[type="checkbox"] { accent-color: #f00; }
+        
+        .damage-flash { animation: flash 0.2s; }
+        @keyframes flash { 0% { background: #f00; } 100% { background: #050000; } }
+    </style>
+</head>
+<body>
+
+    <div id="menu">
+        <h1>Ltp's Minesweeper</h1>
+        
+        <div style="margin-bottom: 20px;">
+            <button class="btn active" id="btn-mode-classic" onclick="setMode('classic')">Classic Mode</button>
+            <button class="btn" id="btn-mode-custom" onclick="setMode('custom')">Custom Mode</button>
+        </div>
+
+        <div class="menu-grid">
+            <button class="btn" onclick="startGame(16, 16, 40)">Easy (16x16)</button>
+            <button class="btn" onclick="startGame(32, 32, 160)">Medium (32x32)</button>
+            <button class="btn" onclick="startGame(64, 64, 640)">Hard (64x64)</button>
+            <button class="btn text-red border-red" onclick="startGame(128, 128, 2560)">Insane (128x128)</button>
+            <button class="btn text-red border-red" onclick="startGame(256, 256, 10240)">Devious (256x256)</button>
+            <button class="btn text-red border-red" onclick="startGame(512, 512, 40960)">Explosive (512x512)</button>
+            <button class="btn" onclick="toggleCustomSize()">Custom Size</button>
+        </div>
+
+        <div class="custom-inputs" id="custom-size-panel" style="display: none;">
+            <input type="number" id="cust-w" value="10" min="5" max="999" placeholder="W"> x 
+            <input type="number" id="cust-h" value="10" min="5" max="999" placeholder="H">
+            <input type="number" id="cust-m" value="15" min="1" max="99999" placeholder="Mines">
+            <button class="btn" onclick="startCustomSizeGame()">Play Custom</button>
+        </div>
+
+        <div class="settings-panel" id="custom-settings">
+            <h3 class="text-red">Custom Mode Rules</h3>
+            <label><input type="checkbox" id="set-directional" checked> Directional/Diamond Mines</label>
+            <label><input type="checkbox" id="set-burning" checked> Burning Numbers</label>
+            <div class="sub-setting">Chance: <input type="number" id="set-fire-chance" value="25" min="1" max="100">%</div>
+            <label><input type="checkbox" id="set-decoys" checked> Decoy/Fake Numbers</label>
+            <hr style="border-color:#a00;">
+            <label><input type="checkbox" id="set-chaser"> Chaser Box (Hunts your mouse/touch)</label>
+            <div class="sub-setting">Speed: <input type="number" id="set-chaser-speed" value="100" min="10" max="500"> px/s</div>
+            <div class="sub-setting">Hearts (Health): <input type="number" id="set-hearts" value="3" min="1" max="10"></div>
+        </div>
+    </div>
+
+    <div id="game-ui">
+        <div id="header">
+            <div>
+                <span class="text-red">Mines: <span id="ui-mines">0</span></span> | 
+                <span>Time: <span id="ui-time">0</span></span>
+            </div>
+            <div id="health-container">
+                <!-- Hearts injected here -->
+            </div>
+            <div class="tools">
+                <button class="btn active" id="tool-click" onclick="setTool('click')">Click</button>
+                <button class="btn" id="tool-flag" onclick="setTool('flag')">Flag</button>
+                <button class="btn" id="tool-bucket" onclick="setTool('bucket')" style="display:none;">Bucket</button>
+            </div>
+            <button class="btn" onclick="backToMenu()">Quit</button>
+        </div>
+        <div id="canvas-container">
+            <canvas id="gameCanvas"></canvas>
+        </div>
+    </div>
+
+    <div id="game-over">
+        <h2 id="go-title" class="text-red" style="font-size: 2rem; margin-bottom: 10px;">YOU DIED</h2>
+        <button class="btn" onclick="backToMenu()">Back to Menu</button>
+    </div>
+
+<script>
+const ASSET_PATHS = {
+    title_image: "Images/title_image.png",
+    click_tool: "Images/click_tool.png",
+    flag_tool: "Images/flag_tool.png",
+    bucket_tool: "Images/bucket_tool.png",
+    unchecked_tile: "Images/unchecked_tile.png",
+    flagged_tile: "Images/flagged_tile.png",
+    1: "Images/1.png", 2: "Images/2.png", 3: "Images/3.png", 
+    4: "Images/4.png", 5: "Images/5.png", 6: "Images/6.png", 
+    7: "Images/7.png", 8: "Images/8.png", 9: "Images/9.png",
+    10: "Images/10.png", 11: "Images/11.png", 12: "Images/12.png",
+    "1_decoy": "Images/1_decoy.png", "2_decoy": "Images/2_decoy.png", "3_decoy": "Images/3_decoy.png",
+    "4_decoy": "Images/4_decoy.png", "5_decoy": "Images/5_decoy.png", "6_decoy": "Images/6_decoy.png",
+    "7_decoy": "Images/7_decoy.png", "8_decoy": "Images/8_decoy.png", "9_decoy": "Images/9_decoy.png",
+    "10_decoy": "Images/10_decoy.png", "11_decoy": "Images/11_decoy.png", "12_decoy": "Images/12_decoy.png",
+    particle: "Images/particle.png",
+    tile_ash: "Images/tile_ash.png",
+    arrow: "Images/arrow.png" 
+};
+
+const IMAGES = {};
+let assetsLoaded = false;
+Object.keys(ASSET_PATHS).forEach(key => {
+    IMAGES[key] = new Image();
+    IMAGES[key].src = ASSET_PATHS[key];
+});
+
+// SVG string for hearts to avoid emojis in code
+const SVG_HEART = `<svg class="heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+const SVG_HEART_EMPTY = `<svg class="heart heart-empty" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+
+let mode = 'classic';
+let activeTool = 'click'; 
+let TILE_SIZE = 30;
+let gridW = 0, gridH = 0, totalMines = 0;
+let board = [];
+let gameActive = false;
+let firstClick = true;
+let flagsPlaced = 0;
+let timeElapsed = 0;
+let timerInterval = null;
+
+let camX = 0, camY = 0;
+let isDragging = false;
+let startDragX = 0, startDragY = 0;
+let lastCamX = 0, lastCamY = 0;
+let dragThreshold = 5; 
+let movedDuringClick = false;
+
+// Custom features config
+let conf = { directional: false, burning: false, fireChance: 0.25, decoys: false, chaser: false, chaserSpeed: 100, maxHearts: 1 };
+let particles = [];
+
+// Player / Chaser State
+let player = { hearts: 1, iFrames: 0, isTouch: false, aimX: 0, aimY: 0, hitboxRadius: 20 };
+let chaser = { x: -1000, y: -1000, size: 24, active: false };
+
+const canvas = document.getElementById('gameCanvas');
+const canvasContainer = document.getElementById('canvas-container');
+const ctx = canvas.getContext('2d', { alpha: false }); 
+let reqAnimFrame = null;
+let lastTime = 0;
+
+const uiMines = document.getElementById('ui-mines');
+const uiTime = document.getElementById('ui-time');
+const healthContainer = document.getElementById('health-container');
+
+function setMode(m) {
+    mode = m;
+    document.getElementById('btn-mode-classic').classList.toggle('active', m === 'classic');
+    document.getElementById('btn-mode-custom').classList.toggle('active', m === 'custom');
+    document.getElementById('custom-settings').style.display = m === 'custom' ? 'flex' : 'none';
+    document.getElementById('tool-bucket').style.display = m === 'custom' ? 'inline-block' : 'none';
+}
+
+function toggleCustomSize() {
+    const p = document.getElementById('custom-size-panel');
+    p.style.display = p.style.display === 'none' ? 'flex' : 'none';
+}
+
+function startCustomSizeGame() {
+    let w = parseInt(document.getElementById('cust-w').value) || 10;
+    let h = parseInt(document.getElementById('cust-h').value) || 10;
+    let m = parseInt(document.getElementById('cust-m').value) || 15;
+    if (m >= w * h) m = (w * h) - 1; 
+    startGame(w, h, m);
+}
+
+function backToMenu() {
+    gameActive = false;
+    clearInterval(timerInterval);
+    cancelAnimationFrame(reqAnimFrame);
+    document.getElementById('game-ui').style.display = 'none';
+    document.getElementById('game-over').style.display = 'none';
+    document.getElementById('menu').style.display = 'flex';
+}
+
+function resizeCanvas() {
+    canvas.width = canvasContainer.clientWidth;
+    canvas.height = canvasContainer.clientHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+
+function startGame(w, h, mines) {
+    gridW = w;
+    gridH = h;
+    totalMines = mines;
+    flagsPlaced = 0;
+    timeElapsed = 0;
+    firstClick = true;
+    particles = [];
+    uiMines.innerText = totalMines;
+    uiTime.innerText = '0';
+    
+    // Parse custom settings
+    conf.directional = mode === 'custom' && document.getElementById('set-directional').checked;
+    conf.burning = mode === 'custom' && document.getElementById('set-burning').checked;
+    conf.decoys = mode === 'custom' && document.getElementById('set-decoys').checked;
+    conf.chaser = mode === 'custom' && document.getElementById('set-chaser').checked;
+    
+    let chanceVal = parseInt(document.getElementById('set-fire-chance').value);
+    conf.fireChance = (isNaN(chanceVal) ? 25 : chanceVal) / 100;
+    
+    let speedVal = parseInt(document.getElementById('set-chaser-speed').value);
+    conf.chaserSpeed = isNaN(speedVal) ? 100 : speedVal;
+    
+    let heartVal = parseInt(document.getElementById('set-hearts').value);
+    conf.maxHearts = (mode === 'custom' && !isNaN(heartVal)) ? heartVal : 1;
+    
+    player.hearts = conf.maxHearts;
+    player.iFrames = 0;
+    updateHealthUI();
+
+    setTool('click');
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('game-ui').style.display = 'flex';
+    document.getElementById('game-over').style.display = 'none';
+    
+    resizeCanvas();
+    camX = (gridW * TILE_SIZE - canvas.width) / 2;
+    camY = (gridH * TILE_SIZE - canvas.height) / 2;
+    
+    initBoard();
+    
+    // Init chaser
+    chaser.active = conf.chaser;
+    chaser.x = (gridW * TILE_SIZE) / 2;
+    chaser.y = -100; // start off-screen
+    
+    gameActive = true;
+    lastTime = performance.now();
+    cancelAnimationFrame(reqAnimFrame);
+    gameLoop(lastTime);
+}
+
+function updateHealthUI() {
+    healthContainer.innerHTML = '';
+    if (mode === 'classic' || conf.maxHearts <= 1) return; // Hide health bar if 1 hit death like classic
+    
+    for (let i = 0; i < conf.maxHearts; i++) {
+        healthContainer.innerHTML += (i < player.hearts) ? SVG_HEART : SVG_HEART_EMPTY;
+    }
+}
+
+function takeDamage() {
+    if (player.iFrames > 0 || !gameActive) return;
+    
+    player.hearts--;
+    player.iFrames = 1.5; // 1.5 seconds of invincibility
+    updateHealthUI();
+    
+    // Flash screen
+    canvasContainer.classList.remove('damage-flash');
+    void canvasContainer.offsetWidth; // trigger reflow
+    canvasContainer.classList.add('damage-flash');
+    
+    spawnParticles(player.aimX, player.aimY, 30, '#f00', 3);
+    
+    if (player.hearts <= 0) {
+        gameOver(false);
+    } else {
+        // Teleport chaser away so it doesnt instantly re-hit after iFrames
+        chaser.x = player.aimX + (Math.random() > 0.5 ? 500 : -500);
+        chaser.y = player.aimY + (Math.random() > 0.5 ? 500 : -500);
+    }
+}
+
+function initBoard() {
+    board = new Array(gridW * gridH);
+    for (let i = 0; i < board.length; i++) {
+        board[i] = {
+            mine: false, revealed: false, flagged: false,
+            val: 0, isDecoy: false,
+            isDirectional: false, activeDirs: [],
+            onFire: false, fireTime: 0, isAsh: false
+        };
+    }
+}
+
+function getIdx(x, y) { return y * gridW + x; }
+function getXY(idx) { return { x: idx % gridW, y: Math.floor(idx / gridW) }; }
+function inBounds(x, y) { return x >= 0 && x < gridW && y >= 0 && y < gridH; }
+
+function placeMines(firstX, firstY) {
+    let minesPlaced = 0;
+    while (minesPlaced < totalMines) {
+        let x = Math.floor(Math.random() * gridW);
+        let y = Math.floor(Math.random() * gridH);
+        
+        if (Math.abs(x - firstX) <= 1 && Math.abs(y - firstY) <= 1) continue;
+        
+        let idx = getIdx(x, y);
+        if (!board[idx].mine) {
+            board[idx].mine = true;
+            minesPlaced++;
+        }
+    }
+    calculateNumbers();
+    
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        if(gameActive) {
+            timeElapsed++;
+            uiTime.innerText = timeElapsed;
+        }
+    }, 1000);
+}
+
+const DIRS = [
+    {x:-1,y:-1},{x:0,y:-1},{x:1,y:-1},
+    {x:-1,y:0},          {x:1,y:0},
+    {x:-1,y:1}, {x:0,y:1}, {x:1,y:1}
+];
+
+const EXTENDED_DIRS = [
+    { name: 'up', dx: 0, dy: -2, angle: 0 },
+    { name: 'right', dx: 2, dy: 0, angle: Math.PI/2 },
+    { name: 'down', dx: 0, dy: 2, angle: Math.PI },
+    { name: 'left', dx: -2, dy: 0, angle: -Math.PI/2 }
+];
+
+function calculateNumbers() {
+    for (let y = 0; y < gridH; y++) {
+        for (let x = 0; x < gridW; x++) {
+            let idx = getIdx(x, y);
+            if (board[idx].mine) continue;
+            
+            let count = 0;
+            for (let d of DIRS) {
+                let nx = x + d.x, ny = y + d.y;
+                if (inBounds(nx, ny) && board[getIdx(nx, ny)].mine) count++;
+            }
+
+            if (conf.directional && Math.random() < 0.08) {
+                board[idx].isDirectional = true;
+                let numDirs = Math.floor(Math.random() * 4) + 1;
+                let shuffled = [...EXTENDED_DIRS].sort(() => Math.random() - 0.5);
+                board[idx].activeDirs = shuffled.slice(0, numDirs);
+
+                for (let ed of board[idx].activeDirs) {
+                    let nx = x + ed.dx, ny = y + ed.dy;
+                    if (inBounds(nx, ny) && board[getIdx(nx, ny)].mine) count++;
+                }
+            }
+            
+            board[idx].val = count;
+
+            if (conf.decoys && board[idx].val > 0 && Math.random() < 0.03) {
+                board[idx].isDecoy = true;
+                let mod = Math.random() > 0.5 ? 1 : -1;
+                board[idx].val = Math.max(1, Math.min(12, board[idx].val + mod));
+            }
+        }
+    }
+}
+
+function reveal(x, y) {
+    let idx = getIdx(x, y);
+    if (!inBounds(x,y) || board[idx].revealed || board[idx].flagged) return;
+    
+    if (firstClick) {
+        placeMines(x, y);
+        firstClick = false;
+    }
+
+    if (board[idx].mine) {
+        takeDamage();
+        if (player.hearts > 0) {
+            // Un-mine the tile so you don't instantly die clicking it again if you survived
+            board[idx].mine = false;
+            board[idx].revealed = true;
+            board[idx].isAsh = true; 
+            spawnParticles(x*TILE_SIZE + TILE_SIZE/2, y*TILE_SIZE + TILE_SIZE/2, 10, '#f00', 1);
+        }
+        return;
+    }
+
+    let stack = [idx];
+    while(stack.length > 0) {
+        let currIdx = stack.pop();
+        let tile = board[currIdx];
+        
+        if (tile.revealed || tile.flagged) continue;
+        tile.revealed = true;
+        
+        if (conf.burning && tile.val > 0 && !tile.mine && Math.random() < conf.fireChance) {
+            tile.onFire = true;
+            tile.fireTime = 5;
+        }
+        
+        if (tile.val === 0 && !tile.isDirectional) {
+            let p = getXY(currIdx);
+            for (let d of DIRS) {
+                let nx = p.x + d.x, ny = p.y + d.y;
+                if (inBounds(nx, ny)) {
+                    let nIdx = getIdx(nx, ny);
+                    if (!board[nIdx].revealed && !board[nIdx].mine) {
+                        stack.push(nIdx);
+                    }
+                }
+            }
+        }
+    }
+    checkWin();
+}
+
+function flag(x, y) {
+    let idx = getIdx(x, y);
+    if (!inBounds(x,y) || board[idx].revealed) return;
+    board[idx].flagged = !board[idx].flagged;
+    flagsPlaced += board[idx].flagged ? 1 : -1;
+    uiMines.innerText = totalMines - flagsPlaced;
+}
+
+function bucket(x, y) {
+    let idx = getIdx(x, y);
+    if (!inBounds(x,y) || !board[idx].revealed) return;
+    if (board[idx].onFire) {
+        board[idx].onFire = false;
+        spawnParticles(x * TILE_SIZE + TILE_SIZE/2, y * TILE_SIZE + TILE_SIZE/2, 10, '#fff', 0.5);
+    }
+}
+
+function updateFire(dt) {
+    if(!gameActive || !conf.burning) return;
+    for(let i = 0; i < board.length; i++) {
+        if(board[i].onFire) {
+            board[i].fireTime -= dt;
+            if (Math.random() < 0.2) {
+                let p = getXY(i);
+                spawnParticles(p.x * TILE_SIZE + Math.random()*TILE_SIZE, p.y * TILE_SIZE + TILE_SIZE, 1, '#f50', 1);
+            }
+            if(board[i].fireTime <= 0) {
+                board[i].onFire = false;
+                triggerBurnEffect(i);
+            }
+        }
+    }
+}
+
+function triggerBurnEffect(idx) {
+    if (Math.random() < 0.5) {
+        let p = getXY(idx);
+        for(let d of DIRS) {
+            let nx = p.x + d.x, ny = p.y + d.y;
+            if(inBounds(nx,ny)) {
+                let nIdx = getIdx(nx,ny);
+                if(board[nIdx].mine && !board[nIdx].flagged) {
+                    takeDamage();
+                    board[nIdx].mine = false;
+                    board[nIdx].revealed = true;
+                    board[nIdx].isAsh = true;
+                    return;
+                }
+            }
+        }
+    }
+    board[idx].isAsh = true;
+    board[idx].val = 0; 
+    let p = getXY(idx);
+    for(let d of DIRS) {
+        let nx = p.x + d.x, ny = p.y + d.y;
+        if(inBounds(nx,ny)) {
+            let nIdx = getIdx(nx,ny);
+            if(board[nIdx].flagged) {
+                board[nIdx].flagged = false;
+                flagsPlaced--;
+                uiMines.innerText = totalMines - flagsPlaced;
+                spawnParticles(nx*TILE_SIZE + TILE_SIZE/2, ny*TILE_SIZE + TILE_SIZE/2, 5, '#555', 1);
+            }
+        }
+    }
+}
+
+function updateChaser(dt) {
+    if (!gameActive || !chaser.active) return;
+    
+    // Move towards player aim
+    let dx = player.aimX - chaser.x;
+    let dy = player.aimY - chaser.y;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    
+    if (dist > 0) {
+        chaser.x += (dx / dist) * conf.chaserSpeed * dt;
+        chaser.y += (dy / dist) * conf.chaserSpeed * dt;
+    }
+    
+    // Collision check
+    let hitDist = player.isTouch ? player.hitboxRadius : (chaser.size / 2);
+    if (dist < hitDist + (chaser.size / 2)) {
+        takeDamage();
+    }
+}
+
+function spawnParticles(x, y, count, color, speedScale) {
+    for (let i = 0; i < count; i++) {
+        let angle = Math.random() * Math.PI * 2;
+        let speed = Math.random() * 2 * speedScale;
+        particles.push({
+            x: x, y: y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+            life: 1.0, color: color, size: Math.random() * 3 + 2
+        });
+    }
+}
+
+function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx; p.y += p.vy;
+        p.life -= dt * 0.5; 
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+}
+
+function drawParticles() {
+    for (let p of particles) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x - camX, p.y - camY, p.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+}
+
+function setTool(t) {
+    activeTool = t;
+    document.getElementById('tool-click').classList.toggle('active', t === 'click');
+    document.getElementById('tool-flag').classList.toggle('active', t === 'flag');
+    document.getElementById('tool-bucket').classList.toggle('active', t === 'bucket');
+}
+
+// Global aim tracking for chaser
+function updateAim(clientX, clientY, isTouch) {
+    let rect = canvas.getBoundingClientRect();
+    player.aimX = clientX - rect.left + camX;
+    player.aimY = clientY - rect.top + camY;
+    player.isTouch = isTouch;
+}
+
+canvas.addEventListener('mousemove', e => updateAim(e.clientX, e.clientY, false));
+canvas.addEventListener('touchmove', e => {
+    if(e.touches.length > 0) updateAim(e.touches[0].clientX, e.touches[0].clientY, true);
+});
+canvas.addEventListener('touchstart', e => {
+    if(e.touches.length > 0) updateAim(e.touches[0].clientX, e.touches[0].clientY, true);
+});
+
+canvas.addEventListener('mousedown', pointerDown);
+canvas.addEventListener('mousemove', pointerMove);
+window.addEventListener('mouseup', pointerUp);
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); pointerDown(e.touches[0]); }, {passive: false});
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); pointerMove(e.touches[0]); }, {passive: false});
+window.addEventListener('touchend', pointerUp);
+canvas.addEventListener('contextmenu', e => e.preventDefault()); 
+
+function pointerDown(e) {
+    if (!gameActive) return;
+    isDragging = true;
+    movedDuringClick = false;
+    startDragX = e.clientX;
+    startDragY = e.clientY;
+    lastCamX = camX;
+    lastCamY = camY;
+}
+
+function pointerMove(e) {
+    if (!isDragging || !gameActive) return;
+    let dx = e.clientX - startDragX;
+    let dy = e.clientY - startDragY;
+    
+    if (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold) {
+        movedDuringClick = true;
+    }
+    camX = lastCamX - dx;
+    camY = lastCamY - dy;
+    
+    let maxCamX = Math.max(0, gridW * TILE_SIZE - canvas.width);
+    let maxCamY = Math.max(0, gridH * TILE_SIZE - canvas.height);
+    camX = Math.max(0, Math.min(camX, maxCamX));
+    camY = Math.max(0, Math.min(camY, maxCamY));
+}
+
+function pointerUp(e) {
+    if (!gameActive || !isDragging) return;
+    isDragging = false;
+    
+    if (!movedDuringClick) {
+        let clientX = e.clientX || (e.changedTouches ? e.changedTouches[0].clientX : 0);
+        let clientY = e.clientY || (e.changedTouches ? e.changedTouches[0].clientY : 0);
+        
+        let rect = canvas.getBoundingClientRect();
+        let mx = clientX - rect.left + camX;
+        let my = clientY - rect.top + camY;
+        
+        let tx = Math.floor(mx / TILE_SIZE);
+        let ty = Math.floor(my / TILE_SIZE);
+        
+        if (inBounds(tx, ty)) {
+            if (activeTool === 'click') reveal(tx, ty);
+            else if (activeTool === 'flag') flag(tx, ty);
+            else if (activeTool === 'bucket') bucket(tx, ty);
+        }
+    }
+}
+
+function checkWin() {
+    let unrevealedSafe = 0;
+    for (let i = 0; i < board.length; i++) {
+        if (!board[i].mine && !board[i].revealed) unrevealedSafe++;
+    }
+    if (unrevealedSafe === 0) gameOver(true);
+}
+
+function gameOver(win) {
+    gameActive = false;
+    clearInterval(timerInterval);
+    for(let i=0; i<board.length; i++) {
+        if (board[i].mine) {
+            board[i].revealed = true;
+            if(!win) {
+                let p = getXY(i);
+                spawnParticles(p.x*TILE_SIZE + TILE_SIZE/2, p.y*TILE_SIZE + TILE_SIZE/2, 20, '#f00', 2);
+            }
+        }
+    }
+    document.getElementById('game-over').style.display = 'block';
+    let title = document.getElementById('go-title');
+    title.innerText = win ? "YOU SURVIVED" : "YOU DIED";
+    title.style.color = win ? "#fff" : "#f00";
+}
+
+function drawFallbackImg(ctx, key, x, y, size) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (key === 'unchecked_tile') {
+        ctx.fillStyle = '#222'; ctx.fillRect(0,0,size,size);
+        ctx.strokeStyle = '#444'; ctx.strokeRect(0,0,size,size);
+    } else if (key === 'flagged_tile') {
+        ctx.fillStyle = '#222'; ctx.fillRect(0,0,size,size);
+        ctx.fillStyle = '#f00'; ctx.beginPath(); ctx.moveTo(size*.3, size*.8); ctx.lineTo(size*.3, size*.2); ctx.lineTo(size*.8, size*.4); ctx.fill();
+    } else if (key === 'tile_ash') {
+        ctx.fillStyle = '#111'; ctx.fillRect(0,0,size,size);
+        ctx.fillStyle = '#555'; ctx.fillRect(2,2,size-4,size-4);
+    } else if (key === 'arrow') {
+        ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(size/2, size*.05); ctx.lineTo(size*.8, size*.3); ctx.lineTo(size*.6, size*.3); ctx.lineTo(size*.6, size*.5); ctx.lineTo(size*.4, size*.5); ctx.lineTo(size*.4, size*.3); ctx.lineTo(size*.2, size*.3); ctx.fill();
+    }
+    ctx.restore();
+}
+
+function drawNumberFallback(ctx, num, isDecoy, x, y, size) {
+    let colors = ['#fff', '#00f', '#0f0', '#f00', '#009', '#900', '#099', '#000', '#555', '#999', '#ff0', '#f0f', '#0ff'];
+    ctx.fillStyle = colors[num] || '#fff';
+    
+    if (isDecoy) {
+        ctx.font = `italic bold ${size*0.5}px Courier`;
+        ctx.fillStyle = '#aaa'; 
+        ctx.fillText(num, x + size*0.35, y + size*0.75); 
+    } else {
+        ctx.font = `bold ${size*0.6}px Courier`;
+        let offsetX = num >= 10 ? size*0.15 : size*0.3;
+        ctx.fillText(num, x + offsetX, y + size*0.75);
+    }
+}
+
+function drawTile(tile, tx, ty, scX, scY) {
+    if (!tile.revealed) {
+        if (tile.flagged) {
+            if (IMAGES['flagged_tile'].complete && IMAGES['flagged_tile'].naturalWidth > 0) ctx.drawImage(IMAGES['flagged_tile'], scX, scY, TILE_SIZE, TILE_SIZE);
+            else drawFallbackImg(ctx, 'flagged_tile', scX, scY, TILE_SIZE);
+        } else {
+            if (IMAGES['unchecked_tile'].complete && IMAGES['unchecked_tile'].naturalWidth > 0) ctx.drawImage(IMAGES['unchecked_tile'], scX, scY, TILE_SIZE, TILE_SIZE);
+            else drawFallbackImg(ctx, 'unchecked_tile', scX, scY, TILE_SIZE);
+        }
+    } else {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(scX, scY, TILE_SIZE, TILE_SIZE);
+        ctx.strokeStyle = '#220000';
+        ctx.strokeRect(scX, scY, TILE_SIZE, TILE_SIZE);
+
+        if (tile.mine) {
+            ctx.fillStyle = '#f00';
+            ctx.beginPath();
+            ctx.arc(scX + TILE_SIZE/2, scY + TILE_SIZE/2, TILE_SIZE*0.3, 0, Math.PI*2);
+            ctx.fill();
+        } else if (tile.isAsh) {
+            if (IMAGES['tile_ash'].complete && IMAGES['tile_ash'].naturalWidth > 0) ctx.drawImage(IMAGES['tile_ash'], scX, scY, TILE_SIZE, TILE_SIZE);
+            else drawFallbackImg(ctx, 'tile_ash', scX, scY, TILE_SIZE);
+        } else if (tile.val > 0) {
+            let numKey = tile.isDecoy ? tile.val + "_decoy" : tile.val;
+            
+            if (IMAGES[numKey] && IMAGES[numKey].complete && IMAGES[numKey].naturalWidth > 0) {
+                ctx.drawImage(IMAGES[numKey], scX, scY, TILE_SIZE, TILE_SIZE);
+            } else {
+                drawNumberFallback(ctx, tile.val, tile.isDecoy, scX, scY, TILE_SIZE);
+            }
+            
+            if (tile.isDirectional) {
+                for (let dir of tile.activeDirs) {
+                    ctx.save();
+                    ctx.translate(scX + TILE_SIZE/2, scY + TILE_SIZE/2);
+                    ctx.rotate(dir.angle);
+                    ctx.translate(-TILE_SIZE/2, -TILE_SIZE/2);
+                    if (IMAGES['arrow'].complete && IMAGES['arrow'].naturalWidth > 0) {
+                        ctx.drawImage(IMAGES['arrow'], 0, 0, TILE_SIZE, TILE_SIZE);
+                    } else {
+                        drawFallbackImg(ctx, 'arrow', 0, 0, TILE_SIZE);
+                    }
+                    ctx.restore();
+                }
+            }
+        }
+        
+        if (tile.onFire) {
+            ctx.fillStyle = `rgba(255, 60, 0, ${0.3 + Math.random()*0.2})`;
+            ctx.fillRect(scX, scY, TILE_SIZE, TILE_SIZE);
+        }
+    }
+}
+
+function render() {
+    ctx.fillStyle = '#050000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    let startCol = Math.max(0, Math.floor(camX / TILE_SIZE));
+    let endCol = Math.min(gridW, startCol + Math.ceil(canvas.width / TILE_SIZE) + 1);
+    let startRow = Math.max(0, Math.floor(camY / TILE_SIZE));
+    let endRow = Math.min(gridH, startRow + Math.ceil(canvas.height / TILE_SIZE) + 1);
+
+    for (let y = startRow; y < endRow; y++) {
+        for (let x = startCol; x < endCol; x++) {
+            let tile = board[getIdx(x, y)];
+            let scX = Math.floor(x * TILE_SIZE - camX);
+            let scY = Math.floor(y * TILE_SIZE - camY);
+            drawTile(tile, x, y, scX, scY);
+        }
+    }
+    
+    // Draw Touch Hitbox
+    if (player.isTouch && gameActive) {
+        ctx.strokeStyle = `rgba(255, 255, 255, 0.2)`;
+        ctx.beginPath();
+        ctx.arc(player.aimX - camX, player.aimY - camY, player.hitboxRadius, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    
+    // Draw Chaser Box
+    if (chaser.active && gameActive) {
+        ctx.fillStyle = (player.iFrames > 0 && Math.floor(player.iFrames * 10) % 2 === 0) ? '#500' : '#f00';
+        ctx.fillRect(chaser.x - chaser.size/2 - camX, chaser.y - chaser.size/2 - camY, chaser.size, chaser.size);
+        
+        // Angry eyes
+        ctx.fillStyle = '#000';
+        ctx.fillRect(chaser.x - chaser.size/4 - camX, chaser.y - chaser.size/4 - camY, chaser.size/4, chaser.size/4);
+        ctx.fillRect(chaser.x + chaser.size/8 - camX, chaser.y - chaser.size/4 - camY, chaser.size/4, chaser.size/4);
+    }
+    
+    drawParticles();
+}
+
+function gameLoop(time) {
+    let dt = (time - lastTime) / 1000;
+    lastTime = time;
+    
+    if (player.iFrames > 0) player.iFrames -= dt;
+    
+    updateFire(dt);
+    updateChaser(dt);
+    updateParticles(dt);
+    
+    render();
+    reqAnimFrame = requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>
