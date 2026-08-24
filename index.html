@@ -129,9 +129,9 @@
                 <!-- Hearts injected here -->
             </div>
             <div class="tools">
-                <button class="btn active" id="tool-click" onclick="setTool('click')">Click</button>
-                <button class="btn" id="tool-flag" onclick="setTool('flag')">Flag</button>
-                <button class="btn" id="tool-bucket" onclick="setTool('bucket')" style="display:none;">Bucket</button>
+                <button class="btn active" id="tool-click" onclick="setTool('click')">1: Click</button>
+                <button class="btn" id="tool-flag" onclick="setTool('flag')">2: Flag</button>
+                <button class="btn" id="tool-bucket" onclick="setTool('bucket')" style="display:none;">3: Bucket</button>
             </div>
             <button class="btn" onclick="backToMenu()">Quit</button>
         </div>
@@ -156,11 +156,9 @@ const ASSET_PATHS = {
     1: "Images/1.png", 2: "Images/2.png", 3: "Images/3.png", 
     4: "Images/4.png", 5: "Images/5.png", 6: "Images/6.png", 
     7: "Images/7.png", 8: "Images/8.png", 9: "Images/9.png",
-    10: "Images/10.png", 11: "Images/11.png", 12: "Images/12.png",
     "1_decoy": "Images/1_decoy.png", "2_decoy": "Images/2_decoy.png", "3_decoy": "Images/3_decoy.png",
     "4_decoy": "Images/4_decoy.png", "5_decoy": "Images/5_decoy.png", "6_decoy": "Images/6_decoy.png",
     "7_decoy": "Images/7_decoy.png", "8_decoy": "Images/8_decoy.png", "9_decoy": "Images/9_decoy.png",
-    "10_decoy": "Images/10_decoy.png", "11_decoy": "Images/11_decoy.png", "12_decoy": "Images/12_decoy.png",
     particle: "Images/particle.png",
     tile_ash: "Images/tile_ash.png",
     arrow: "Images/arrow.png" 
@@ -173,7 +171,6 @@ Object.keys(ASSET_PATHS).forEach(key => {
     IMAGES[key].src = ASSET_PATHS[key];
 });
 
-// SVG string for hearts to avoid emojis in code
 const SVG_HEART = `<svg class="heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
 const SVG_HEART_EMPTY = `<svg class="heart heart-empty" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
 
@@ -195,11 +192,9 @@ let lastCamX = 0, lastCamY = 0;
 let dragThreshold = 5; 
 let movedDuringClick = false;
 
-// Custom features config
 let conf = { directional: false, burning: false, fireChance: 0.25, decoys: false, chaser: false, chaserSpeed: 100, maxHearts: 1 };
 let particles = [];
 
-// Player / Chaser State
 let player = { hearts: 1, iFrames: 0, isTouch: false, aimX: 0, aimY: 0, hitboxRadius: 20 };
 let chaser = { x: -1000, y: -1000, size: 24, active: false };
 
@@ -249,6 +244,23 @@ function resizeCanvas() {
 }
 window.addEventListener('resize', resizeCanvas);
 
+function clampCamera() {
+    let totalW = gridW * TILE_SIZE;
+    let totalH = gridH * TILE_SIZE;
+    
+    if (totalW <= canvas.width) {
+        camX = (totalW - canvas.width) / 2;
+    } else {
+        camX = Math.max(0, Math.min(camX, totalW - canvas.width));
+    }
+    
+    if (totalH <= canvas.height) {
+        camY = (totalH - canvas.height) / 2;
+    } else {
+        camY = Math.max(0, Math.min(camY, totalH - canvas.height));
+    }
+}
+
 function startGame(w, h, mines) {
     gridW = w;
     gridH = h;
@@ -260,7 +272,6 @@ function startGame(w, h, mines) {
     uiMines.innerText = totalMines;
     uiTime.innerText = '0';
     
-    // Parse custom settings
     conf.directional = mode === 'custom' && document.getElementById('set-directional').checked;
     conf.burning = mode === 'custom' && document.getElementById('set-burning').checked;
     conf.decoys = mode === 'custom' && document.getElementById('set-decoys').checked;
@@ -277,6 +288,9 @@ function startGame(w, h, mines) {
     
     player.hearts = conf.maxHearts;
     player.iFrames = 0;
+    player.aimX = (gridW * TILE_SIZE) / 2;
+    player.aimY = (gridH * TILE_SIZE) / 2;
+    player.isTouch = true;
     updateHealthUI();
 
     setTool('click');
@@ -285,15 +299,21 @@ function startGame(w, h, mines) {
     document.getElementById('game-over').style.display = 'none';
     
     resizeCanvas();
+    
+    // Auto scale tile size if grid is massive so it fits nicely
+    if (gridW > 100) TILE_SIZE = 16;
+    else if (gridW > 50) TILE_SIZE = 22;
+    else TILE_SIZE = 30;
+
     camX = (gridW * TILE_SIZE - canvas.width) / 2;
     camY = (gridH * TILE_SIZE - canvas.height) / 2;
+    clampCamera();
     
     initBoard();
     
-    // Init chaser
     chaser.active = conf.chaser;
     chaser.x = (gridW * TILE_SIZE) / 2;
-    chaser.y = -100; // start off-screen
+    chaser.y = -100;
     
     gameActive = true;
     lastTime = performance.now();
@@ -303,7 +323,7 @@ function startGame(w, h, mines) {
 
 function updateHealthUI() {
     healthContainer.innerHTML = '';
-    if (mode === 'classic' || conf.maxHearts <= 1) return; // Hide health bar if 1 hit death like classic
+    if (mode === 'classic' || conf.maxHearts <= 1) return;
     
     for (let i = 0; i < conf.maxHearts; i++) {
         healthContainer.innerHTML += (i < player.hearts) ? SVG_HEART : SVG_HEART_EMPTY;
@@ -314,12 +334,11 @@ function takeDamage() {
     if (player.iFrames > 0 || !gameActive) return;
     
     player.hearts--;
-    player.iFrames = 1.5; // 1.5 seconds of invincibility
+    player.iFrames = 1.5;
     updateHealthUI();
     
-    // Flash screen
     canvasContainer.classList.remove('damage-flash');
-    void canvasContainer.offsetWidth; // trigger reflow
+    void canvasContainer.offsetWidth;
     canvasContainer.classList.add('damage-flash');
     
     spawnParticles(player.aimX, player.aimY, 30, '#f00', 3);
@@ -327,7 +346,6 @@ function takeDamage() {
     if (player.hearts <= 0) {
         gameOver(false);
     } else {
-        // Teleport chaser away so it doesnt instantly re-hit after iFrames
         chaser.x = player.aimX + (Math.random() > 0.5 ? 500 : -500);
         chaser.y = player.aimY + (Math.random() > 0.5 ? 500 : -500);
     }
@@ -416,7 +434,7 @@ function calculateNumbers() {
             if (conf.decoys && board[idx].val > 0 && Math.random() < 0.03) {
                 board[idx].isDecoy = true;
                 let mod = Math.random() > 0.5 ? 1 : -1;
-                board[idx].val = Math.max(1, Math.min(12, board[idx].val + mod));
+                board[idx].val = Math.max(1, Math.min(9, board[idx].val + mod));
             }
         }
     }
@@ -434,7 +452,6 @@ function reveal(x, y) {
     if (board[idx].mine) {
         takeDamage();
         if (player.hearts > 0) {
-            // Un-mine the tile so you don't instantly die clicking it again if you survived
             board[idx].mine = false;
             board[idx].revealed = true;
             board[idx].isAsh = true; 
@@ -543,7 +560,6 @@ function triggerBurnEffect(idx) {
 function updateChaser(dt) {
     if (!gameActive || !chaser.active) return;
     
-    // Move towards player aim
     let dx = player.aimX - chaser.x;
     let dy = player.aimY - chaser.y;
     let dist = Math.sqrt(dx*dx + dy*dy);
@@ -553,7 +569,6 @@ function updateChaser(dt) {
         chaser.y += (dy / dist) * conf.chaserSpeed * dt;
     }
     
-    // Collision check
     let hitDist = player.isTouch ? player.hitboxRadius : (chaser.size / 2);
     if (dist < hitDist + (chaser.size / 2)) {
         takeDamage();
@@ -598,7 +613,63 @@ function setTool(t) {
     document.getElementById('tool-bucket').classList.toggle('active', t === 'bucket');
 }
 
-// Global aim tracking for chaser
+const keys = {};
+window.addEventListener('keydown', (e) => {
+    if (!gameActive) return;
+    if (e.key === '1') setTool('click');
+    else if (e.key === '2') setTool('flag');
+    else if (e.key === '3') setTool('bucket');
+    
+    const k = e.key.toLowerCase();
+    if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k) || ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+        keys[k] = true;
+        keys[e.key] = true;
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    const k = e.key.toLowerCase();
+    if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k) || ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+        keys[k] = false;
+        keys[e.key] = false;
+    }
+});
+
+function updateCameraMovement(dt) {
+    if (!gameActive) return;
+    let speed = 400 * (TILE_SIZE / 30);
+    let vx = 0, vy = 0;
+    if (keys['w'] || keys['arrowup'] || keys['ArrowUp']) vy -= 1;
+    if (keys['s'] || keys['arrowdown'] || keys['ArrowDown']) vy += 1;
+    if (keys['a'] || keys['arrowleft'] || keys['ArrowLeft']) vx -= 1;
+    if (keys['d'] || keys['arrowright'] || keys['ArrowRight']) vx += 1;
+    
+    if (vx !== 0 || vy !== 0) {
+        let len = Math.sqrt(vx*vx + vy*vy);
+        camX += (vx / len) * speed;
+        camY += (vy / len) * speed;
+        clampCamera();
+    }
+}
+
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (!gameActive) return;
+    
+    let zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+    let oldTileSize = TILE_SIZE;
+    TILE_SIZE = Math.max(10, Math.min(120, TILE_SIZE * zoomFactor));
+    
+    let rect = canvas.getBoundingClientRect();
+    let mouseX = e.clientX - rect.left;
+    let mouseY = e.clientY - rect.top;
+    
+    camX = mouseX + camX * (TILE_SIZE / oldTileSize) - mouseX;
+    camY = mouseY + camY * (TILE_SIZE / oldTileSize) - mouseY;
+    
+    clampCamera();
+}, { passive: false });
+
 function updateAim(clientX, clientY, isTouch) {
     let rect = canvas.getBoundingClientRect();
     player.aimX = clientX - rect.left + camX;
@@ -643,10 +714,7 @@ function pointerMove(e) {
     camX = lastCamX - dx;
     camY = lastCamY - dy;
     
-    let maxCamX = Math.max(0, gridW * TILE_SIZE - canvas.width);
-    let maxCamY = Math.max(0, gridH * TILE_SIZE - canvas.height);
-    camX = Math.max(0, Math.min(camX, maxCamX));
-    camY = Math.max(0, Math.min(camY, maxCamY));
+    clampCamera();
 }
 
 function pointerUp(e) {
@@ -717,7 +785,7 @@ function drawFallbackImg(ctx, key, x, y, size) {
 }
 
 function drawNumberFallback(ctx, num, isDecoy, x, y, size) {
-    let colors = ['#fff', '#00f', '#0f0', '#f00', '#009', '#900', '#099', '#000', '#555', '#999', '#ff0', '#f0f', '#0ff'];
+    let colors = ['#fff', '#00f', '#0f0', '#f00', '#009', '#900', '#099', '#000', '#555'];
     ctx.fillStyle = colors[num] || '#fff';
     
     if (isDecoy) {
@@ -726,8 +794,7 @@ function drawNumberFallback(ctx, num, isDecoy, x, y, size) {
         ctx.fillText(num, x + size*0.35, y + size*0.75); 
     } else {
         ctx.font = `bold ${size*0.6}px Courier`;
-        let offsetX = num >= 10 ? size*0.15 : size*0.3;
-        ctx.fillText(num, x + offsetX, y + size*0.75);
+        ctx.fillText(num, x + size*0.3, y + size*0.75);
     }
 }
 
@@ -804,7 +871,6 @@ function render() {
         }
     }
     
-    // Draw Touch Hitbox
     if (player.isTouch && gameActive) {
         ctx.strokeStyle = `rgba(255, 255, 255, 0.2)`;
         ctx.beginPath();
@@ -812,12 +878,10 @@ function render() {
         ctx.stroke();
     }
     
-    // Draw Chaser Box
     if (chaser.active && gameActive) {
         ctx.fillStyle = (player.iFrames > 0 && Math.floor(player.iFrames * 10) % 2 === 0) ? '#500' : '#f00';
         ctx.fillRect(chaser.x - chaser.size/2 - camX, chaser.y - chaser.size/2 - camY, chaser.size, chaser.size);
         
-        // Angry eyes
         ctx.fillStyle = '#000';
         ctx.fillRect(chaser.x - chaser.size/4 - camX, chaser.y - chaser.size/4 - camY, chaser.size/4, chaser.size/4);
         ctx.fillRect(chaser.x + chaser.size/8 - camX, chaser.y - chaser.size/4 - camY, chaser.size/4, chaser.size/4);
@@ -832,6 +896,7 @@ function gameLoop(time) {
     
     if (player.iFrames > 0) player.iFrames -= dt;
     
+    updateCameraMovement(dt);
     updateFire(dt);
     updateChaser(dt);
     updateParticles(dt);
