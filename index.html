@@ -82,6 +82,9 @@
 <body>
 
     <div id="menu">
+        <div style="margin-bottom: 15px; display: flex; justify-content: center;">
+            <img src="Images/title_image.png" alt="Logo" style="width: 80px; height: 80px; object-fit: cover; border: 2px solid #f00;" onerror="this.style.display='none'">
+        </div>
         <h1>Ltp's Minesweeper</h1>
         
         <div style="margin-bottom: 20px;">
@@ -128,10 +131,19 @@
             <div id="health-container">
                 <!-- Hearts injected here -->
             </div>
-            <div class="tools">
-                <button class="btn active" id="tool-click" onclick="setTool('click')">1: Click</button>
-                <button class="btn" id="tool-flag" onclick="setTool('flag')">2: Flag</button>
-                <button class="btn" id="tool-bucket" onclick="setTool('bucket')" style="display:none;">3: Bucket</button>
+            <div class="tools" style="display: flex; gap: 8px;">
+                <button class="btn active" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 12px;" id="tool-click" onclick="setTool('click')">
+                    <span>1: Click</span>
+                    <img src="Images/click_tool.png" alt="Click" style="width: 20px; height: 20px; margin-top: 4px; object-fit: contain;" onerror="this.style.display='none'">
+                </button>
+                <button class="btn" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px 12px;" id="tool-flag" onclick="setTool('flag')">
+                    <span>2: Flag</span>
+                    <img src="Images/flag_tool.png" alt="Flag" style="width: 20px; height: 20px; margin-top: 4px; object-fit: contain;" onerror="this.style.display='none'">
+                </button>
+                <button class="btn" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 6px 12px;" id="tool-bucket" onclick="setTool('bucket')">
+                    <span>3: Bucket</span>
+                    <img src="Images/bucket_tool.png" alt="Bucket" style="width: 20px; height: 20px; margin-top: 4px; object-fit: contain;" onerror="this.style.display='none'">
+                </button>
             </div>
             <button class="btn" onclick="backToMenu()">Quit</button>
         </div>
@@ -152,6 +164,7 @@ const ASSET_PATHS = {
     flag_tool: "Images/flag_tool.png",
     bucket_tool: "Images/bucket_tool.png",
     unchecked_tile: "Images/unchecked_tile.png",
+    checked_tile: "Images/checked_tile.png",
     flagged_tile: "Images/flagged_tile.png",
     1: "Images/1.png", 2: "Images/2.png", 3: "Images/3.png", 
     4: "Images/4.png", 5: "Images/5.png", 6: "Images/6.png", 
@@ -772,6 +785,9 @@ function drawFallbackImg(ctx, key, x, y, size) {
     if (key === 'unchecked_tile') {
         ctx.fillStyle = '#222'; ctx.fillRect(0,0,size,size);
         ctx.strokeStyle = '#444'; ctx.strokeRect(0,0,size,size);
+    } else if (key === 'checked_tile') {
+        ctx.fillStyle = '#0a0202'; ctx.fillRect(0,0,size,size);
+        ctx.strokeStyle = '#220000'; ctx.strokeRect(0,0,size,size);
     } else if (key === 'flagged_tile') {
         ctx.fillStyle = '#222'; ctx.fillRect(0,0,size,size);
         ctx.fillStyle = '#f00'; ctx.beginPath(); ctx.moveTo(size*.3, size*.8); ctx.lineTo(size*.3, size*.2); ctx.lineTo(size*.8, size*.4); ctx.fill();
@@ -808,10 +824,11 @@ function drawTile(tile, tx, ty, scX, scY) {
             else drawFallbackImg(ctx, 'unchecked_tile', scX, scY, TILE_SIZE);
         }
     } else {
-        ctx.fillStyle = '#000';
-        ctx.fillRect(scX, scY, TILE_SIZE, TILE_SIZE);
-        ctx.strokeStyle = '#220000';
-        ctx.strokeRect(scX, scY, TILE_SIZE, TILE_SIZE);
+        if (IMAGES['checked_tile'].complete && IMAGES['checked_tile'].naturalWidth > 0) {
+            ctx.drawImage(IMAGES['checked_tile'], scX, scY, TILE_SIZE, TILE_SIZE);
+        } else {
+            drawFallbackImg(ctx, 'checked_tile', scX, scY, TILE_SIZE);
+        }
 
         if (tile.mine) {
             ctx.fillStyle = '#f00';
